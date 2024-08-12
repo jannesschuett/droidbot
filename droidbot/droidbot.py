@@ -44,7 +44,8 @@ class DroidBot(object):
                  master=None,
                  humanoid=None,
                  ignore_ad=False,
-                 replay_output=None):
+                 replay_output=None,
+                 analysis=None):
         """
         initiate droidbot with configurations
         :return:
@@ -82,6 +83,7 @@ class DroidBot(object):
         self.replay_output = replay_output
 
         self.enabled = True
+        self.analysis = analysis
 
         try:
             self.device = Device(
@@ -92,7 +94,8 @@ class DroidBot(object):
                 grant_perm=grant_perm,
                 enable_accessibility_hard=self.enable_accessibility_hard,
                 humanoid=self.humanoid,
-                ignore_ad=ignore_ad)
+                ignore_ad=ignore_ad,
+                analysis=self.analysis)
             self.app = App(app_path, output_dir=self.output_dir)
 
             self.env_manager = AppEnvManager(
@@ -189,7 +192,7 @@ class DroidBot(object):
         if not self.keep_app:
             self.device.uninstall_app(self.app)
         if hasattr(self.input_manager.policy, "master") and \
-           self.input_manager.policy.master:
+                self.input_manager.policy.master:
             import xmlrpc.client
             proxy = xmlrpc.client.ServerProxy(self.input_manager.policy.master)
             proxy.stop_worker(self.device.serial)

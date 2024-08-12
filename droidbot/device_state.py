@@ -2,6 +2,8 @@ import copy
 import math
 import os
 
+import psycopg2
+
 from .utils import md5
 from .input_event import TouchEvent, LongTouchEvent, ScrollEvent, SetTextEvent, KeyEvent
 
@@ -12,7 +14,7 @@ class DeviceState(object):
     """
 
     def __init__(self, device, views, foreground_activity, activity_stack, background_services,
-                 tag=None, screenshot_path=None):
+                 tag=None, screenshot_path=None, analysis=None, interaction_num=None):
         self.device = device
         self.foreground_activity = foreground_activity
         self.activity_stack = activity_stack if isinstance(activity_stack, list) else []
@@ -33,6 +35,17 @@ class DeviceState(object):
         self.possible_events = None
         self.width = device.get_width(refresh=True)
         self.height = device.get_height(refresh=False)
+
+        # database connection
+        self.database_connection = psycopg2.connect(host=os.environ['POSTGRES_HOST'] or 'localhost',
+                                                    port=os.environ['HOST_PORT'],
+                                                    dbname=os.environ['POSTGRES_DB'], user=os.environ['POSTGRES_USER'],
+                                                    password=os.environ['POSTGRES_PASSWORD'])
+        self.cur = self.database_connection.cursor()
+
+        # own vars
+        self.analysis = analysis
+        self.interaction_num = interaction_num
 
     @property
     def activity_short_name(self):
@@ -69,8 +82,8 @@ class DeviceState(object):
         return views
 
     def __assemble_view_tree(self, root_view, views):
-        if not len(self.view_tree): # bootstrap
-            if not len(views): # to fix if views is empty
+        if not len(self.view_tree):  # bootstrap
+            if not len(views):  # to fix if views is empty
                 return
             self.view_tree = copy.deepcopy(views[0])
             self.__assemble_view_tree(self.view_tree, views)
@@ -185,6 +198,14 @@ class DeviceState(object):
             import shutil
             shutil.copyfile(self.screenshot_path, dest_screenshot_path)
             self.screenshot_path = dest_screenshot_path
+
+            # database integration
+            with open(dest_screenshot_path, 'rb') as f:
+                screenshot_byes = f.read()
+            self.cur.execute("INSERT INTO interface (analysis, comment, screenshot) VALUES (%s, %s, %s);", (
+                self.analysis, f"Interaction number: {self.interaction_num}, Droidbot tag: {self.tag}",
+                screenshot_byes))
+
             # from PIL.Image import Image
             # if isinstance(self.screenshot_path, Image):
             #     self.screenshot_path.save(dest_screenshot_path)
@@ -417,8 +438,8 @@ class DeviceState(object):
             if self.__safe_dict_get(view_dict, 'enabled') and \
                     self.__safe_dict_get(view_dict, 'visible') and \
                     self.__safe_dict_get(view_dict, 'resource_id') not in \
-               ['android:id/navigationBarBackground',
-                'android:id/statusBarBackground']:
+                    ['android:id/navigationBarBackground',
+                     'android:id/statusBarBackground']:
                 enabled_view_ids.append(view_dict['temp_id'])
         # enabled_view_ids.reverse()
 
@@ -474,11 +495,11 @@ class DeviceState(object):
         for view_dict in self.views:
             # exclude navigation bar if exists
             if self.__safe_dict_get(view_dict, 'visible') and \
-                self.__safe_dict_get(view_dict, 'resource_id') not in \
-               ['android:id/navigationBarBackground',
-                'android:id/statusBarBackground']:
+                    self.__safe_dict_get(view_dict, 'resource_id') not in \
+                    ['android:id/navigationBarBackground',
+                     'android:id/statusBarBackground']:
                 enabled_view_ids.append(view_dict['temp_id'])
-        
+
         text_frame = "<p id=@ text='&' attr=null bounds=null>#</p>"
         btn_frame = "<button id=@ text='&' attr=null bounds=null>#</button>"
         checkbox_frame = "<checkbox id=@ text='&' attr=null bounds=null>#</checkbox>"
@@ -608,11 +629,11 @@ class DeviceState(object):
         texts, content_descriptions = [], []
         for childid in children_ids:
             if not self.__safe_dict_get(self.views[childid], 'visible') or \
-                self.__safe_dict_get(self.views[childid], 'resource_id') in \
-               ['android:id/navigationBarBackground',
-                'android:id/statusBarBackground']:
+                    self.__safe_dict_get(self.views[childid], 'resource_id') in \
+                    ['android:id/navigationBarBackground',
+                     'android:id/statusBarBackground']:
                 # if the successor is not visible, then ignore it!
-                continue          
+                continue
 
             text = self.__safe_dict_get(self.views[childid], 'text', default='')
             if len(text) > 50:
@@ -632,4 +653,3 @@ class DeviceState(object):
         merged_text = '<br>'.join(texts) if len(texts) > 0 else ''
         merged_desc = '<br>'.join(content_descriptions) if len(content_descriptions) > 0 else ''
         return merged_text, merged_desc
-

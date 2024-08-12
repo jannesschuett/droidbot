@@ -27,7 +27,7 @@ class Device(object):
 
     def __init__(self, device_serial=None, is_emulator=False, output_dir=None,
                  cv_mode=False, grant_perm=False, telnet_auth_token=None,
-                 enable_accessibility_hard=False, humanoid=None, ignore_ad=False):
+                 enable_accessibility_hard=False, humanoid=None, ignore_ad=False, analysis=None):
         """
         initialize a device connection
         :param device_serial: serial number of target device
@@ -100,6 +100,10 @@ class Device(object):
         if self.get_sdk_version() >= 32:
             self.logger.info("disable minicap on sdk >= 32")
             self.adapters[self.minicap] = False
+
+        # own params
+        self.interaction_num = 0
+        self.analysis = analysis
 
     def check_connectivity(self):
         """
@@ -822,7 +826,10 @@ class Device(object):
                                         foreground_activity=foreground_activity,
                                         activity_stack=activity_stack,
                                         background_services=background_services,
-                                        screenshot_path=screenshot_path)
+                                        screenshot_path=screenshot_path,
+                                        analysis=self.analysis,
+                                        interaction_num=self.interaction_num)
+            self.interaction_num += 1
         except Exception as e:
             self.logger.warning("exception in get_current_state: %s" % e)
             import traceback
