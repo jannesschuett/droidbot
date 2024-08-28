@@ -32,6 +32,8 @@ class UTG(object):
 
         self.start_time = datetime.datetime.now()
 
+        self.interaction_number = 0
+
     @property
     def first_state_str(self):
         return self.first_state.state_str if self.first_state else None
@@ -51,6 +53,9 @@ class UTG(object):
     def add_transition(self, event, old_state, new_state):
         self.add_node(old_state)
         self.add_node(new_state)
+
+        new_state.insert_into_database(self.interaction_number)
+        self.interaction_number += 1
 
         # make sure the states are not None
         if not old_state or not new_state:

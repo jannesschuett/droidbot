@@ -2,8 +2,6 @@ import copy
 import math
 import os
 
-import psycopg2
-
 from .utils import md5
 from .input_event import TouchEvent, LongTouchEvent, ScrollEvent, SetTextEvent, KeyEvent
 
@@ -13,7 +11,7 @@ class DeviceState(object):
     the state of the current device
     """
 
-    def __init__(self, device, views, foreground_activity, activity_stack, background_services,
+    def __init__(self, device, views, foreground_activity, activity_stack, background_services, connection,
                  tag=None, screenshot_path=None, analysis=None, interaction_num=None):
         self.device = device
         self.foreground_activity = foreground_activity
@@ -36,16 +34,10 @@ class DeviceState(object):
         self.width = device.get_width(refresh=True)
         self.height = device.get_height(refresh=False)
 
-        # database connection
-        self.database_connection = psycopg2.connect(host=os.environ['POSTGRES_HOST'] or 'localhost',
-                                                    port=os.environ['POSTGRES_PORT'],
-                                                    dbname=os.environ['POSTGRES_DB'], user=os.environ['POSTGRES_USER'],
-                                                    password=os.environ['POSTGRES_PASSWORD'])
-        self.cur = self.database_connection.cursor()
-
         # own vars
         self.analysis = analysis
-        self.interaction_num = interaction_num
+
+        self.database_connection = connection
 
     @property
     def activity_short_name(self):
@@ -178,6 +170,24 @@ class DeviceState(object):
                 property_values.add(property_value)
         return property_values
 
+    def insert_into_database(self, interaction_number):
+        try:
+            with open(self.screenshot_path, 'rb') as f:
+                screenshot_bytes = f.read()
+            self.device.logger.info(
+                f"Inserting screenshot into database with params: analysis={self.analysis}, interaction_num={interaction_number}, tag={self.tag}")
+            cursor = self.database_connection.cursor()
+            cursor.execute("INSERT INTO interface (analysis, comment, screenshot) VALUES (%s, %s, %s);", (
+                self.analysis, f"Interaction number: {interaction_number}, Droidbot tag: {self.tag}",
+                screenshot_bytes))
+            self.database_connection.commit()
+            cursor.close()
+        except Exception as e:
+            self.device.logger.warning(e)
+
+        # database integration
+
+
     def save2dir(self, output_dir=None):
         try:
             if output_dir is None:
@@ -198,13 +208,6 @@ class DeviceState(object):
             import shutil
             shutil.copyfile(self.screenshot_path, dest_screenshot_path)
             self.screenshot_path = dest_screenshot_path
-
-            # database integration
-            with open(dest_screenshot_path, 'rb') as f:
-                screenshot_byes = f.read()
-            self.cur.execute("INSERT INTO interface (analysis, comment, screenshot) VALUES (%s, %s, %s);", (
-                self.analysis, f"Interaction number: {self.interaction_num}, Droidbot tag: {self.tag}",
-                screenshot_byes))
 
             # from PIL.Image import Image
             # if isinstance(self.screenshot_path, Image):

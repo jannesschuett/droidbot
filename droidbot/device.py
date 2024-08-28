@@ -4,6 +4,7 @@ import re
 import subprocess
 import sys
 import time
+import psycopg2
 
 from .adapter.adb import ADB
 from .adapter.droidbot_app import DroidBotAppConn
@@ -105,6 +106,11 @@ class Device(object):
         self.interaction_num = 0
         self.analysis = analysis
 
+        self.database_connection = psycopg2.connect(host=os.environ['POSTGRES_HOST'] or 'localhost',
+                                                    port=os.environ['POSTGRES_PORT'],
+                                                    dbname=os.environ['POSTGRES_DB'], user=os.environ['POSTGRES_USER'],
+                                                    password=os.environ['POSTGRES_PASSWORD'])
+
     def check_connectivity(self):
         """
         check if the device is available
@@ -196,6 +202,7 @@ class Device(object):
             if not adapter_enabled:
                 continue
             adapter.tear_down()
+        self.database_connection.close()
 
     def is_foreground(self, app):
         """
@@ -811,7 +818,7 @@ class Device(object):
         return local_image_path
 
     def get_current_state(self):
-        self.logger.debug("getting current device state...")
+        self.logger.info("getting current device state...")
         current_state = None
         try:
             views = self.get_views()
@@ -828,8 +835,8 @@ class Device(object):
                                         background_services=background_services,
                                         screenshot_path=screenshot_path,
                                         analysis=self.analysis,
-                                        interaction_num=self.interaction_num)
-            self.interaction_num += 1
+                                        interaction_num=self.interaction_num,
+                                        connection=self.database_connection)
         except Exception as e:
             self.logger.warning("exception in get_current_state: %s" % e)
             import traceback
